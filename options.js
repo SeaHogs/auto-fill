@@ -1,5 +1,5 @@
 const fields = [
-    "firstName","lastName","fullName","email","phone",
+    "firstName","lastName","fullName","email","phone","birthday",
     "address1","city","postalCode","country",
     "university","degree","major","gpa","gradYear",
     "linkedin","github","website","summary"

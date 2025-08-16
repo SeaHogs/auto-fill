@@ -10,6 +10,7 @@ function norm(s) {
 const FIELD_RULES = [
     { key: "email", any: ["email","e-mail","mail"] },
     { key: "phone", any: ["phone","mobile","contact number","telephone","tel"] },
+    { key: "birthday", any: ["birthday","birth date","date of birth","dob","birthdate"] },
     { key: "firstName", any: ["first name","given name","forename","given"] },
     { key: "lastName",  any: ["last name","surname","family name","family","surname"] },
     { key: "fullName",  any: ["full name","name of applicant","your name","name"] },
@@ -41,6 +42,10 @@ const AUTOCOMPLETE_MAP = {
     "postal-code": "postalCode",
     "country": "country",
     "country-name": "country",
+    "bday": "birthday",
+    "bday-day": "birthDay",
+    "bday-month": "birthMonth",
+    "bday-year": "birthYear",
 };
 
 function scoreLabelAgainstRule(label, placeholder, nameAttr, idAttr, rule) {
@@ -110,6 +115,13 @@ function guessFieldKey(input, {label, placeholder, name, id}) {
     for (const rule of FIELD_RULES) {
         const sc = scoreLabelAgainstRule(label, placeholder, name, id, rule);
         if (sc > best.score) best = { key: rule.key, score: sc };
+    }
+
+    if (best.key === "birthday") {
+        const s = norm([label, placeholder, name, id].join(" "));
+        if (/\b(year|yyyy|yy)\b/.test(s)) return "birthYear";
+        if (/\b(month|mm)\b/.test(s)) return "birthMonth";
+        if (/\b(day|dd)\b/.test(s)) return "birthDay";
     }
 
     // input-type nudges
@@ -184,6 +196,11 @@ function setDateInput(input, key, profile) {
         fireInputEvents(input);
         return true;
     }
+    if (key === "birthday" && profile.birthday) {
+        input.value = profile.birthday;
+        fireInputEvents(input);
+        return true;
+    }
     return false;
 }
 
@@ -228,6 +245,13 @@ async function fillNow() {
         // Derived values
         let value = profile[key];
 
+        if ((key === "birthYear" || key === "birthMonth" || key === "birthDay") && profile.birthday) {
+            const [y, m, d] = profile.birthday.split("-");
+            if (key === "birthYear") value = y;
+            if (key === "birthMonth") value = String(parseInt(m, 10));
+            if (key === "birthDay") value = String(parseInt(d, 10));
+        }
+
         // FullName → split if specific fields exist
         if ((key === "firstName" || key === "lastName") && !value && profile.fullName) {
             const parts = profile.fullName.trim().split(/\s+/);
@@ -239,6 +263,13 @@ async function fillNow() {
         let ok = false;
         if (el instanceof HTMLSelectElement) {
             ok = setSelectByTextOrValue(el, value);
+            if (!ok && key === "birthMonth") {
+                const monthNum = parseInt(value, 10);
+                if (!isNaN(monthNum)) {
+                    const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+                    ok = setSelectByTextOrValue(el, MONTHS[monthNum - 1]);
+                }
+            }
         } else if (el instanceof HTMLInputElement && el.type === "date") {
             ok = setDateInput(el, key, profile);
             if (!ok && value && /^\d{4}-\d{2}-\d{2}$/.test(value)) ok = setTextLike(el, value);
