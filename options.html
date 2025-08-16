@@ -39,6 +39,15 @@
     <label>Summary / Bio</label><textarea id="summary" rows="3"></textarea>
 </div>
 
+<h2>Encryption</h2>
+<p>Encrypt profile at rest with a passphrase. You’ll unlock it from the popup when filling forms.</p>
+<div class="grid">
+    <label>Enable encryption</label><input id="encEnabled" type="checkbox" />
+    <label>Passphrase</label><input id="encPass" type="password" />
+    <label>Confirm passphrase</label><input id="encPass2" type="password" />
+</div>
+<p id="encStatus" style="font-size:12px;color:#666;margin-top:6px;"></p>
+
 <div class="row">
     <button id="save">Save</button>
     <button id="reset" title="Clear all stored data">Clear</button>

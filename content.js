@@ -1,25 +1,22 @@
+// Mark readiness
 window.__AF_CONTENT_READY__ = true;
 console.debug("[AutoFill] content script loaded on", location.href);
 
+// matching utils
 function norm(s) {
-    return (s || "")
-        .toLowerCase()
-        .replace(/[_\-:/()]/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
+    return (s || "").toLowerCase().replace(/[_\-:/()]/g, " ").replace(/\s+/g, " ").trim();
 }
 
-// Simple Heuristic synonym buckets
 const FIELD_RULES = [
     { key: "email", any: ["email","e-mail","mail"] },
     { key: "phone", any: ["phone","mobile","contact number","telephone","tel"] },
-    { key: "firstName", any: ["first name","given name","forename"] },
-    { key: "lastName",  any: ["last name","surname","family name"] },
+    { key: "firstName", any: ["first name","given name","forename","given"] },
+    { key: "lastName",  any: ["last name","surname","family name","family","surname"] },
     { key: "fullName",  any: ["full name","name of applicant","your name","name"] },
     { key: "address1",  any: ["address","street address","address line","unit no"] },
     { key: "city",      any: ["city","town"] },
     { key: "postalCode",any: ["postal code","zip","zip code","postcode"] },
-    { key: "country",   any: ["country","nation"] },
+    { key: "country",   any: ["country","nation","country/region"] },
     { key: "university",any: ["university","college","institution","school"] },
     { key: "degree",    any: ["degree","qualification","level of study","education level"] },
     { key: "major",     any: ["major","field of study","specialization","programme"] },
@@ -31,32 +28,36 @@ const FIELD_RULES = [
     { key: "summary",   any: ["summary","bio","about you","profile summary","about me"] }
 ];
 
+const AUTOCOMPLETE_MAP = {
+    "email": "email",
+    "tel": "phone",
+    "url": "website",
+    "given-name": "firstName",
+    "additional-name": null,
+    "family-name": "lastName",
+    "name": "fullName",
+    "organization": "university",
+    "address-line1": "address1",
+    "postal-code": "postalCode",
+    "country": "country",
+    "country-name": "country",
+};
+
 function scoreLabelAgainstRule(label, placeholder, nameAttr, idAttr, rule) {
     const hay = norm([label, placeholder, nameAttr, idAttr].filter(Boolean).join(" "));
     let s = 0;
     for (const cand of rule.any) {
-        const c = norm(cand);
-        if (!c) continue;
+        const c = norm(cand); if (!c) continue;
         if (hay === c) s += 4;
         else if (hay.startsWith(c)) s += 3;
         else if (hay.includes(c)) s += 2;
-        const cTokens = c.split(" ");
-        const hits = cTokens.filter(t => hay.includes(t)).length;
+        const hits = c.split(" ").filter(t => hay.includes(t)).length;
         s += Math.min(2, hits);
     }
     if (/email/.test(hay)) s += 1;
     if (/\b(tel|phone|mobile)\b/.test(hay)) s += 1;
     if (/zip|postal/.test(hay)) s += 1;
     return s;
-}
-
-function guessFieldKey({label, placeholder, name, id}) {
-    let best = { key: null, score: -1 };
-    for (const rule of FIELD_RULES) {
-        const sc = scoreLabelAgainstRule(label, placeholder, name, id, rule);
-        if (sc > best.score) best = { key: rule.key, score: sc };
-    }
-    return best.score >= 3 ? best.key : null;
 }
 
 function getLabelTextForInput(input) {
@@ -77,80 +78,196 @@ function getLabelTextForInput(input) {
 }
 
 function isFillable(el) {
-    if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) return false;
     if (el.disabled || el.readOnly) return false;
-    if (el.type === "hidden" || el.type === "password" || el.type === "file") return false;
-    return true;
+    if (el instanceof HTMLInputElement) {
+        if (["hidden","password","file"].includes(el.type)) return false;
+        return true;
+    }
+    if (el instanceof HTMLTextAreaElement) return true;
+    if (el instanceof HTMLSelectElement) return true;
+    return false;
 }
 
-function setValue(el, value) {
+// Grouped name helpers (first/last detection via attributes)
+function nameHintFromAttrs(nameAttr = "", idAttr = "") {
+    const s = norm([nameAttr, idAttr].join(" "));
+    if (/\bgiven|first|fname|first-?name\b/.test(s)) return "firstName";
+    if (/\bfamily|last|lname|last-?name|surname\b/.test(s)) return "lastName";
+    return null;
+}
+
+// Guess field key with heuristics + autocomplete + grouped names
+function guessFieldKey(input, {label, placeholder, name, id}) {
+    const ac = (input.getAttribute("autocomplete") || "").trim().toLowerCase();
+    if (AUTOCOMPLETE_MAP[ac] !== undefined && AUTOCOMPLETE_MAP[ac] !== null) {
+        return AUTOCOMPLETE_MAP[ac];
+    }
+    const grouped = nameHintFromAttrs(name, id);
+    if (grouped) return grouped;
+
+    // base rules
+    let best = { key: null, score: -1 };
+    for (const rule of FIELD_RULES) {
+        const sc = scoreLabelAgainstRule(label, placeholder, name, id, rule);
+        if (sc > best.score) best = { key: rule.key, score: sc };
+    }
+
+    // input-type nudges
+    if (best.score < 3) {
+        if (input.type === "email") return "email";
+        if (input.type === "tel") return "phone";
+        if (input.type === "url") return "website";
+    }
+    return best.score >= 3 ? best.key : null;
+}
+
+// ---------- value setters ----------
+function fireInputEvents(el) {
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function setTextLike(el, value) {
     if (value == null || value === "") return false;
     const prev = el.value;
     el.value = value;
-    el.dispatchEvent(new Event("input", { bubbles: true }));
-    el.dispatchEvent(new Event("change", { bubbles: true }));
+    fireInputEvents(el);
     return el.value !== prev;
+}
+
+function normalizeCountry(s) {
+    const x = norm(s);
+    if (["us","usa","u s a","u.s.","u.s.a","united states","united states of america","america"].includes(x)) return "united states";
+    if (["uk","u k","u.k.","united kingdom","great britain","britain","england"].includes(x)) return "united kingdom";
+    if (["sg","s’pore","spore","singapura","republic of singapore"].includes(x)) return "singapore";
+    return x;
+}
+
+function setSelectByTextOrValue(select, desiredRaw) {
+    if (!desiredRaw) return false;
+    const desired = norm(desiredRaw);
+    const desiredCountry = normalizeCountry(desiredRaw);
+
+    let best = null, bestScore = -1;
+    for (const opt of Array.from(select.options)) {
+        const val = norm(opt.value);
+        const txt = norm(opt.textContent || "");
+        const candidates = [val, txt];
+
+        const scores = candidates.map(h => {
+            if (!h) return -1;
+            if (h === desired || h === desiredCountry) return 5;
+            if (h.startsWith(desired)) return 4;
+            if (h.includes(desired)) return 3;
+            if (desired && h.includes(desired.split(" ")[0])) return 2;
+            // country loose match
+            if (normalizeCountry(h) === desiredCountry) return 4;
+            return -1;
+        });
+        const s = Math.max(...scores);
+        if (s > bestScore) { bestScore = s; best = opt; }
+    }
+    if (best && bestScore >= 3) {
+        select.value = best.value;
+        fireInputEvents(select);
+        return true;
+    }
+    return false;
+}
+
+function setDateInput(input, key, profile) {
+    // Fill common cases we actually store
+    if (key === "gradYear" && profile.gradYear) {
+        const y = String(profile.gradYear).padStart(4, "0");
+        const v = `${y}-06-01`; // neutral mid-year
+        input.value = v;
+        fireInputEvents(input);
+        return true;
+    }
+    return false;
 }
 
 function decorate(el, ok) {
     el.setAttribute("data-af-filled", ok ? "1" : "0");
-    const out = ok ? "2px solid #26a269" : "2px dashed #c01c28";
-    el.style.outline = out;
+    el.style.outline = ok ? "2px solid #26a269" : "2px dashed #c01c28";
     el.style.outlineOffset = "2px";
 }
 
-async function fillNow() {
-    const { af_profile } = await chrome.storage.local.get("af_profile");
-    if (!af_profile) {
-        console.info("[AutoFill] No profile saved yet.");
-        return;
+// ---------- profile loader (supports encryption) ----------
+async function loadProfile() {
+    const local = await chrome.storage.local.get(["af_profile", "af_profile_enc"]);
+    if (local.af_profile_enc) {
+        let pass = "";
+        try { const s = await chrome.storage.session.get("af_passphrase"); pass = s.af_passphrase || ""; } catch {}
+        if (!pass) { console.warn("[AutoFill] Encrypted profile present but locked. Use popup to Unlock."); return null; }
+        try { return await AF_CRYPTO.decryptJSON(local.af_profile_enc, pass); }
+        catch (e) { console.warn("[AutoFill] Decryption failed:", e?.message); return null; }
     }
-    const inputs = Array.from(document.querySelectorAll("input, textarea"));
+    return local.af_profile || null;
+}
+
+// ---------- main actions ----------
+async function fillNow() {
+    const profile = await loadProfile();
+    if (!profile) { console.info("[AutoFill] No usable profile (missing/locked)."); return; }
+
+    const elements = Array.from(document.querySelectorAll("input, textarea, select"));
     let filled = 0;
-    for (const input of inputs) {
-        if (!isFillable(input)) continue;
+
+    for (const el of elements) {
+        if (!isFillable(el)) continue;
+
         const meta = {
-            label: getLabelTextForInput(input),
-            placeholder: input.placeholder || "",
-            name: input.name || "",
-            id: input.id || ""
+            label: getLabelTextForInput(el),
+            placeholder: el.placeholder || "",
+            name: el.name || "",
+            id: el.id || ""
         };
-        let key = guessFieldKey(meta);
-        if (!key && input.type === "email") key = "email";
-        if (!key && input.type === "tel") key = "phone";
-        if (!key && input.type === "url") key = "website";
-        let value = null;
-        if ((key === "firstName" || key === "lastName") && !af_profile[key] && af_profile.fullName) {
-            const parts = af_profile.fullName.trim().split(/\s+/);
+        let key = guessFieldKey(el, meta);
+
+        // Derived values
+        let value = profile[key];
+
+        // FullName → split if specific fields exist
+        if ((key === "firstName" || key === "lastName") && !value && profile.fullName) {
+            const parts = profile.fullName.trim().split(/\s+/);
             if (parts.length >= 2) {
-                if (key === "firstName") value = parts.slice(0, -1).join(" ");
-                else value = parts.at(-1);
+                value = key === "firstName" ? parts.slice(0, -1).join(" ") : parts.at(-1);
             }
         }
-        if (value == null) value = af_profile[key];
-        const ok = setValue(input, value);
-        decorate(input, ok);
+
+        let ok = false;
+        if (el instanceof HTMLSelectElement) {
+            ok = setSelectByTextOrValue(el, value);
+        } else if (el instanceof HTMLInputElement && el.type === "date") {
+            ok = setDateInput(el, key, profile);
+            if (!ok && value && /^\d{4}-\d{2}-\d{2}$/.test(value)) ok = setTextLike(el, value);
+        } else {
+            ok = setTextLike(el, value);
+        }
+        decorate(el, ok);
         if (ok) filled++;
     }
+
     console.info(`[AutoFill] Filled ${filled} fields.`);
 }
 
-// --- TEST FUNCTION ---
+// Test logger from Sprint 1
 function listFillableFields() {
-    const inputs = Array.from(document.querySelectorAll("input, textarea"));
+    const elements = Array.from(document.querySelectorAll("input, textarea, select"));
     console.group("[AutoFill] Captured fillable fields:");
-    inputs.forEach(input => {
-        const fillable = isFillable(input);
+    elements.forEach(el => {
+        const fillable = isFillable(el);
         const meta = {
-            label: getLabelTextForInput(input),
-            placeholder: input.placeholder || "",
-            name: input.name || "",
-            id: input.id || ""
+            label: getLabelTextForInput(el),
+            placeholder: el.placeholder || "",
+            name: el.name || "",
+            id: el.id || ""
         };
-        const key = guessFieldKey(meta);
+        const key = guessFieldKey(el, meta);
         console.log({
-            tag: input.tagName.toLowerCase(),
-            type: input.type || "",
+            tag: el.tagName.toLowerCase(),
+            type: el instanceof HTMLInputElement ? el.type : (el instanceof HTMLSelectElement ? "select" : "textarea"),
             fillable,
             label: meta.label,
             placeholder: meta.placeholder,
@@ -167,7 +284,7 @@ chrome.storage.local.get(["af_autoFillEnabled"], ({ af_autoFillEnabled }) => {
     if (af_autoFillEnabled) fillNow();
 });
 
-// Manual triggers
+// Message handlers
 chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.type === "AF_FILL_NOW") fillNow();
     if (msg?.type === "AF_LIST_FIELDS") listFillableFields();

@@ -3,11 +3,12 @@
 <head>
     <meta charset="utf-8" />
     <style>
-        body { font-family: system-ui, sans-serif; margin: 12px; width: 220px; }
-        button { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #ccc; }
+        body { font-family: system-ui, sans-serif; margin: 12px; width: 260px; }
+        button { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #ccc; margin-top: 6px; }
         .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-        label { font-size: 13px; }
         input[type="checkbox"] { transform: scale(1.2); }
+        input[type="password"] { width: 100%; padding: 6px; border-radius: 8px; border: 1px solid #ccc; }
+        small { color:#666 }
     </style>
 </head>
 <body>
@@ -15,12 +16,20 @@
     <label>Auto-fill on page load</label>
     <input id="autofillToggle" type="checkbox" />
 </div>
+
 <button id="fill">Fill this page</button>
-<p style="margin-top:10px;font-size:12px;">
-    Configure your profile in <a href="#" id="openOptions">Options</a>.
-</p>
 <button id="listFields">List fields</button>
 
+<h4 style="margin:10px 0 4px">Unlock (for encrypted profiles)</h4>
+<input id="pass" type="password" placeholder="Passphrase" />
+<button id="unlock">Unlock for session</button>
+<button id="lock">Lock</button>
+<small id="status"></small>
+
+<p style="margin-top:10px;font-size:12px;">
+    Profile in <a href="#" id="openOptions">Options</a>.
+</p>
 <script src="popup.js"></script>
 </body>
 </html>
+
