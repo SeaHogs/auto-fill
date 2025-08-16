@@ -15,7 +15,7 @@ async function getSessionPass() {
 }
 
 async function load() {
-    const local = await chrome.storage.local.get(["af_profile", "af_profile_enc"]);
+    const local = await chrome.storage.local.get(["af_profile", "af_profile_enc", "af_llmBaseUrl", "af_llmApiKey"]);
     const encBundle = local.af_profile_enc;
     const sessionPass = await getSessionPass();
 
@@ -35,6 +35,8 @@ async function load() {
     }
 
     fields.forEach(k => { const el = $(k); if (el && profile[k] !== undefined) el.value = profile[k]; });
+    $("llmBaseUrl").value = local.af_llmBaseUrl || "";
+    $("llmApiKey").value = local.af_llmApiKey || "";
 }
 
 async function save() {
@@ -44,6 +46,8 @@ async function save() {
 
     const profile = {};
     fields.forEach(k => profile[k] = $(k).value.trim());
+    const llmBaseUrl = $("llmBaseUrl").value.trim();
+    const llmApiKey = $("llmApiKey").value.trim();
 
     if (encEnabled) {
         if (!pass || pass !== pass2) { alert("Passphrases must be non-empty and match."); return; }
@@ -58,12 +62,13 @@ async function save() {
         await chrome.storage.local.remove("af_profile_enc");
         alert("Saved (plaintext).");
     }
+    await chrome.storage.local.set({ af_llmBaseUrl: llmBaseUrl, af_llmApiKey: llmApiKey });
     await load();
 }
 
 async function reset() {
     if (!confirm("Clear all stored profile data (both plaintext and encrypted)?")) return;
-    await chrome.storage.local.remove(["af_profile", "af_profile_enc"]);
+    await chrome.storage.local.remove(["af_profile", "af_profile_enc", "af_llmBaseUrl", "af_llmApiKey"]);
     await load();
 }
 

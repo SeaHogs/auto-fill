@@ -223,10 +223,21 @@ async function loadProfile() {
     return local.af_profile || null;
 }
 
+function queryRemoteLLM(prompt) {
+    return new Promise(resolve => {
+        chrome.runtime.sendMessage({ type: "AF_QUERY_LLM", prompt }, (res) => {
+            resolve(res?.answer || null);
+        });
+    });
+}
+
 // ---------- main actions ----------
 async function fillNow() {
     const profile = await loadProfile();
     if (!profile) { console.info("[AutoFill] No usable profile (missing/locked)."); return; }
+
+    const { af_llmBaseUrl, af_llmApiKey } = await chrome.storage.local.get(["af_llmBaseUrl", "af_llmApiKey"]);
+    const llmConfigured = af_llmBaseUrl && af_llmApiKey;
 
     const elements = Array.from(document.querySelectorAll("input, textarea, select"));
     let filled = 0;
@@ -243,9 +254,9 @@ async function fillNow() {
         let key = guessFieldKey(el, meta);
 
         // Derived values
-        let value = profile[key];
+        let value = key ? profile[key] : null;
 
-        if ((key === "birthYear" || key === "birthMonth" || key === "birthDay") && profile.birthday) {
+        if (key && (key === "birthYear" || key === "birthMonth" || key === "birthDay") && profile.birthday) {
             const [y, m, d] = profile.birthday.split("-");
             if (key === "birthYear") value = y;
             if (key === "birthMonth") value = String(parseInt(m, 10));
@@ -253,11 +264,18 @@ async function fillNow() {
         }
 
         // FullName → split if specific fields exist
-        if ((key === "firstName" || key === "lastName") && !value && profile.fullName) {
+        if (key && (key === "firstName" || key === "lastName") && !value && profile.fullName) {
             const parts = profile.fullName.trim().split(/\s+/);
             if (parts.length >= 2) {
                 value = key === "firstName" ? parts.slice(0, -1).join(" ") : parts.at(-1);
             }
+        }
+
+        if (!value && llmConfigured) {
+            const prompt = `Provide a value for the form field with label "${meta.label}" ` +
+                `placeholder "${meta.placeholder}" name "${meta.name}" id "${meta.id}".`;
+            const ans = await queryRemoteLLM(prompt);
+            if (ans) value = ans;
         }
 
         let ok = false;
