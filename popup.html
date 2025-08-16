@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <style>
+        body { font-family: system-ui, sans-serif; margin: 12px; width: 220px; }
+        button { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #ccc; }
+        .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+        label { font-size: 13px; }
+        input[type="checkbox"] { transform: scale(1.2); }
+    </style>
+</head>
+<body>
+<div class="row">
+    <label>Auto-fill on page load</label>
+    <input id="autofillToggle" type="checkbox" />
+</div>
+<button id="fill">Fill this page</button>
+<p style="margin-top:10px;font-size:12px;">
+    Configure your profile in <a href="#" id="openOptions">Options</a>.
+</p>
+<button id="listFields">List fields</button>
+
+<script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>AutoFill Scout – Profile</title>
+    <style>
+        body { font-family: system-ui, sans-serif; margin: 16px; max-width: 720px; }
+        .grid { display: grid; grid-template-columns: 1fr 2fr; gap: 8px 12px; }
+        input, textarea { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #ccc; }
+        h2 { margin-top: 24px; }
+        button { padding: 10px 14px; border-radius: 10px; border: 1px solid #aaa; }
+        .row { margin-top: 12px; display: flex; gap: 8px; }
+    </style>
+</head>
+<body>
+<h1>Profile</h1>
+<p>Save the info you typically fill in applications.</p>
+<div class="grid">
+    <label>First name</label><input id="firstName" />
+    <label>Last name / Surname</label><input id="lastName" />
+    <label>Full name</label><input id="fullName" />
+    <label>Email</label><input id="email" type="email" />
+    <label>Phone</label><input id="phone" type="tel" />
+
+    <label>Address line 1</label><input id="address1" />
+    <label>City</label><input id="city" />
+    <label>Postal code / ZIP</label><input id="postalCode" />
+    <label>Country</label><input id="country" />
+
+    <label>University</label><input id="university" />
+    <label>Degree</label><input id="degree" />
+    <label>Major / Field</label><input id="major" />
+    <label>GPA / CAP</label><input id="gpa" />
+    <label>Graduation year</label><input id="gradYear" type="number" />
+
+    <label>LinkedIn</label><input id="linkedin" type="url" />
+    <label>GitHub</label><input id="github" type="url" />
+    <label>Website / Portfolio</label><input id="website" type="url" />
+    <label>Summary / Bio</label><textarea id="summary" rows="3"></textarea>
+</div>
+
+<div class="row">
+    <button id="save">Save</button>
+    <button id="reset" title="Clear all stored data">Clear</button>
+</div>
+
+<script src="options.js"></script>
+</body>
+</html>

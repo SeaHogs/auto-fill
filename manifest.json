@@ -1,0 +1,25 @@
+{
+  "name": "AutoFill Scout",
+  "description": "Autofill application forms with smart matching.",
+  "version": "0.1.0",
+  "manifest_version": 3,
+  "action": {
+    "default_title": "AutoFill Scout",
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html",
+  "permissions": ["storage", "scripting", "activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  }
+}
