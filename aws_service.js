@@ -9,7 +9,7 @@ const SERVICE_CONFIG = {
     
     // Company adds their real endpoints
     apiEndpoint: 'https://api.company.com/autofill',
-    apiKey: process.env.AWS_API_KEY || 'mock-key',
+    apiKey: 'mock-key',  // ← Fixed: removed process.env
     bucketName: 'company-autofill-profiles',
     
     // AWS Configuration (company fills in)
@@ -20,7 +20,6 @@ const SERVICE_CONFIG = {
         personalizeEndpoint: null // Company adds
     }
 };
-
 // ============================================
 // FIELD MATCHING SERVICE WITH REALISTIC MOCK
 // ============================================
