@@ -1,7 +1,7 @@
 {
   "name": "AutoFill Scout",
   "description": "Autofill application forms with smart matching.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "manifest_version": 3,
   "action": {
     "default_title": "AutoFill Scout",
@@ -20,4 +20,3 @@
   ],
   "background": { "service_worker": "background.js", "type": "module" }
 }
-
