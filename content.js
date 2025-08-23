@@ -189,6 +189,13 @@ class DynamicFieldMatcher {
 // Initialize the dynamic matcher
 const dynamicMatcher = new DynamicFieldMatcher();
 
+// Initialize AWS service (mock by default) - ONLY if aws-service.js is loaded
+let awsService = null;
+if (typeof FieldMatchingService !== 'undefined') {
+    awsService = new FieldMatchingService({ useMockService: true });
+    console.log("[AutoFill] AWS service initialized (mock mode)");
+}
+
 // ============================================
 // ORIGINAL MATCHING UTILITIES (KEPT AS FALLBACK)
 // ============================================
@@ -290,31 +297,115 @@ function nameHintFromAttrs(nameAttr = "", idAttr = "") {
 }
 
 // ============================================
-// ENHANCED FIELD KEY GUESSING (COMBINES BOTH APPROACHES)
+// ENHANCED FIELD KEY GUESSING WITH DEBUG TRACKING
 // ============================================
+
+// Global flag to enable detailed debugging
+const DEBUG_MODE = true;  // Set to false in production
+
+// Track statistics for each matching method
+const matchingStats = {
+    autocomplete: { attempts: 0, successes: 0 },
+    nameHints: { attempts: 0, successes: 0 },
+    awsService: { attempts: 0, successes: 0 },
+    dynamic: { attempts: 0, successes: 0 },
+    rules: { attempts: 0, successes: 0 },
+    typeHints: { attempts: 0, successes: 0 },
+    failed: { count: 0 }
+};
+
 async function guessFieldKey(input, meta, profile) {
+    const debugInfo = {
+        field: `${meta.name || meta.id || 'unknown'}`,
+        label: meta.label,
+        matchMethod: null,
+        confidence: 0,
+        attempts: []
+    };
+
     // 1. Check autocomplete attribute first
+    matchingStats.autocomplete.attempts++;
     const ac = (input.getAttribute("autocomplete") || "").trim().toLowerCase();
     if (AUTOCOMPLETE_MAP[ac] !== undefined && AUTOCOMPLETE_MAP[ac] !== null) {
+        matchingStats.autocomplete.successes++;
+        debugInfo.matchMethod = 'autocomplete';
+        debugInfo.confidence = 1.0;
+        
+        if (DEBUG_MODE) {
+            console.log(`✅ [AutoFill] AUTOCOMPLETE match for "${debugInfo.field}": ${AUTOCOMPLETE_MAP[ac]}`);
+        }
+        
         return AUTOCOMPLETE_MAP[ac];
     }
+    debugInfo.attempts.push({ method: 'autocomplete', result: 'failed' });
     
     // 2. Check for grouped name hints
+    matchingStats.nameHints.attempts++;
     const grouped = nameHintFromAttrs(meta.name, meta.id);
-    if (grouped) return grouped;
+    if (grouped) {
+        matchingStats.nameHints.successes++;
+        debugInfo.matchMethod = 'nameHints';
+        debugInfo.confidence = 0.9;
+        
+        if (DEBUG_MODE) {
+            console.log(`✅ [AutoFill] NAME HINTS match for "${debugInfo.field}": ${grouped}`);
+        }
+        
+        return grouped;
+    }
+    debugInfo.attempts.push({ method: 'nameHints', result: 'failed' });
     
-    // 3. Try dynamic matching if profile is provided
+    // 3. Try AWS service if available
+    if (awsService && profile && typeof SERVICE_CONFIG !== 'undefined' && !SERVICE_CONFIG.useMockService) {
+        matchingStats.awsService.attempts++;
+        try {
+            const fieldContext = dynamicMatcher.extractFieldContext(input);
+            const awsMatch = await awsService.matchField(fieldContext);
+            
+            if (awsMatch.confidence > 0.8) {
+                matchingStats.awsService.successes++;
+                debugInfo.matchMethod = 'awsService';
+                debugInfo.confidence = awsMatch.confidence;
+                
+                if (DEBUG_MODE) {
+                    console.log(`✅ [AutoFill] AWS SERVICE match for "${debugInfo.field}": ${awsMatch.fieldType} (confidence: ${awsMatch.confidence})`);
+                }
+                
+                return awsMatch.fieldType;
+            }
+            debugInfo.attempts.push({ method: 'awsService', result: `low confidence (${awsMatch.confidence})` });
+        } catch (error) {
+            debugInfo.attempts.push({ method: 'awsService', result: `error: ${error.message}` });
+        }
+    }
+    
+    // 4. Try dynamic matching if profile is provided
     if (profile) {
+        matchingStats.dynamic.attempts++;
         const fieldContext = dynamicMatcher.extractFieldContext(input);
         const match = dynamicMatcher.matchFieldToProfile(fieldContext, profile);
         
         if (match.confidence >= 0.5) {
-            console.debug(`[AutoFill] Dynamic match: '${match.key}' (confidence: ${match.confidence.toFixed(2)})`);
+            matchingStats.dynamic.successes++;
+            debugInfo.matchMethod = 'dynamic';
+            debugInfo.confidence = match.confidence;
+            
+            if (DEBUG_MODE) {
+                console.log(`✅ [AutoFill] DYNAMIC match for "${debugInfo.field}": ${match.key} (confidence: ${match.confidence.toFixed(2)})`);
+            }
+            
             return match.key;
+        }
+        debugInfo.attempts.push({ method: 'dynamic', result: `low confidence (${match.confidence.toFixed(2)})` });
+        
+        // Log near-misses for debugging
+        if (DEBUG_MODE && match.confidence > 0.3) {
+            console.warn(`⚠️ [AutoFill] NEAR MISS - Dynamic match for "${debugInfo.field}": ${match.key} (confidence: ${match.confidence.toFixed(2)}, threshold: 0.5)`);
         }
     }
     
-    // 4. Fall back to original rule-based matching
+    // 5. Fall back to original rule-based matching
+    matchingStats.rules.attempts++;
     let best = { key: null, score: -1 };
     for (const rule of FIELD_RULES) {
         const sc = scoreLabelAgainstRule(meta.label, meta.placeholder, meta.name, meta.id, rule);
@@ -323,19 +414,247 @@ async function guessFieldKey(input, meta, profile) {
 
     if (best.key === "birthday") {
         const s = norm([meta.label, meta.placeholder, meta.name, meta.id].join(" "));
-        if (/\b(year|yyyy|yy)\b/.test(s)) return "birthYear";
-        if (/\b(month|mm)\b/.test(s)) return "birthMonth";
-        if (/\b(day|dd)\b/.test(s)) return "birthDay";
+        if (/\b(year|yyyy|yy)\b/.test(s)) best.key = "birthYear";
+        else if (/\b(month|mm)\b/.test(s)) best.key = "birthMonth";
+        else if (/\b(day|dd)\b/.test(s)) best.key = "birthDay";
     }
 
-    if (best.score < 3) {
-        if (input.type === "email") return "email";
-        if (input.type === "tel") return "phone";
-        if (input.type === "url") return "website";
+    if (best.score >= 3) {
+        matchingStats.rules.successes++;
+        debugInfo.matchMethod = 'rules';
+        debugInfo.confidence = best.score / 10; // Normalize score to 0-1
+        
+        if (DEBUG_MODE) {
+            console.log(`⚠️ [AutoFill] FALLBACK RULES match for "${debugInfo.field}": ${best.key} (score: ${best.score})`);
+        }
+        
+        return best.key;
+    }
+    debugInfo.attempts.push({ method: 'rules', result: `low score (${best.score})` });
+
+    // 6. Last resort: input type hints
+    matchingStats.typeHints.attempts++;
+    let typeMatch = null;
+    if (input.type === "email") typeMatch = "email";
+    else if (input.type === "tel") typeMatch = "phone";
+    else if (input.type === "url") typeMatch = "website";
+    
+    if (typeMatch) {
+        matchingStats.typeHints.successes++;
+        debugInfo.matchMethod = 'typeHints';
+        debugInfo.confidence = 0.3;
+        
+        if (DEBUG_MODE) {
+            console.log(`⚠️ [AutoFill] TYPE HINT match for "${debugInfo.field}": ${typeMatch} (based on input type="${input.type}")`);
+        }
+        
+        return typeMatch;
     }
     
-    return best.score >= 3 ? best.key : null;
+    // No match found
+    matchingStats.failed.count++;
+    
+    if (DEBUG_MODE) {
+        console.log(`❌ [AutoFill] NO MATCH for field:`, {
+            field: debugInfo.field,
+            label: meta.label,
+            placeholder: meta.placeholder,
+            attempts: debugInfo.attempts
+        });
+    }
+    
+    return null;
 }
+
+// ============================================
+// STATISTICS REPORTING
+// ============================================
+
+function reportMatchingStatistics() {
+    console.group('📊 [AutoFill] Matching Statistics');
+    
+    const total = Object.values(matchingStats).reduce((sum, stat) => 
+        sum + (stat.attempts || stat.count || 0), 0);
+    
+    console.table({
+        'Autocomplete': {
+            'Attempts': matchingStats.autocomplete.attempts,
+            'Successes': matchingStats.autocomplete.successes,
+            'Success Rate': matchingStats.autocomplete.attempts > 0 
+                ? `${(matchingStats.autocomplete.successes / matchingStats.autocomplete.attempts * 100).toFixed(1)}%`
+                : 'N/A'
+        },
+        'Name Hints': {
+            'Attempts': matchingStats.nameHints.attempts,
+            'Successes': matchingStats.nameHints.successes,
+            'Success Rate': matchingStats.nameHints.attempts > 0
+                ? `${(matchingStats.nameHints.successes / matchingStats.nameHints.attempts * 100).toFixed(1)}%`
+                : 'N/A'
+        },
+        'Dynamic Matcher': {
+            'Attempts': matchingStats.dynamic.attempts,
+            'Successes': matchingStats.dynamic.successes,
+            'Success Rate': matchingStats.dynamic.attempts > 0
+                ? `${(matchingStats.dynamic.successes / matchingStats.dynamic.attempts * 100).toFixed(1)}%`
+                : 'N/A'
+        },
+        'Rule-Based (Fallback)': {
+            'Attempts': matchingStats.rules.attempts,
+            'Successes': matchingStats.rules.successes,
+            'Success Rate': matchingStats.rules.attempts > 0
+                ? `${(matchingStats.rules.successes / matchingStats.rules.attempts * 100).toFixed(1)}%`
+                : 'N/A'
+        },
+        'Type Hints': {
+            'Attempts': matchingStats.typeHints.attempts,
+            'Successes': matchingStats.typeHints.successes,
+            'Success Rate': matchingStats.typeHints.attempts > 0
+                ? `${(matchingStats.typeHints.successes / matchingStats.typeHints.attempts * 100).toFixed(1)}%`
+                : 'N/A'
+        },
+        'Failed': {
+            'Count': matchingStats.failed.count,
+            'Failure Rate': total > 0 ? `${(matchingStats.failed.count / total * 100).toFixed(1)}%` : 'N/A'
+        }
+    });
+    
+    // Performance summary
+    const dynamicSuccess = matchingStats.dynamic.attempts > 0
+        ? (matchingStats.dynamic.successes / matchingStats.dynamic.attempts * 100).toFixed(1)
+        : 0;
+    
+    const rulesSuccess = matchingStats.rules.attempts > 0
+        ? (matchingStats.rules.successes / matchingStats.rules.attempts * 100).toFixed(1)
+        : 0;
+    
+    console.log(`🎯 Dynamic Matcher Success Rate: ${dynamicSuccess}%`);
+    console.log(`📋 Rules Fallback Success Rate: ${rulesSuccess}%`);
+    
+    if (matchingStats.rules.successes > 0) {
+        console.warn(`⚠️ Rules fallback was used ${matchingStats.rules.successes} times - Dynamic matcher needs improvement for these cases`);
+    }
+    
+    if (matchingStats.dynamic.successes > matchingStats.rules.successes) {
+        console.log(`✅ Dynamic matcher is outperforming rules! Consider removing fallback in next version.`);
+    }
+    
+    console.groupEnd();
+}
+
+// ============================================
+// VISUAL DEBUG OVERLAY (Optional)
+// ============================================
+
+function createDebugOverlay() {
+    // Create a floating debug panel
+    const panel = document.createElement('div');
+    panel.id = 'autofill-debug-panel';
+    panel.style.cssText = `
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        width: 300px;
+        background: rgba(0, 0, 0, 0.9);
+        color: #0f0;
+        font-family: monospace;
+        font-size: 12px;
+        padding: 10px;
+        border-radius: 5px;
+        z-index: 999999;
+        max-height: 400px;
+        overflow-y: auto;
+    `;
+    
+    panel.innerHTML = `
+        <h3 style="margin: 0 0 10px 0; color: #0f0;">AutoFill Debug</h3>
+        <div id="debug-stats"></div>
+        <button id="clear-debug" style="margin-top: 10px;">Clear Stats</button>
+        <button id="close-debug" style="margin-top: 10px;">Close</button>
+    `;
+    
+    document.body.appendChild(panel);
+    
+    // Update stats display
+    function updateDebugDisplay() {
+        const statsDiv = document.getElementById('debug-stats');
+        statsDiv.innerHTML = `
+            <div>Dynamic: ${matchingStats.dynamic.successes}/${matchingStats.dynamic.attempts}</div>
+            <div>Rules: ${matchingStats.rules.successes}/${matchingStats.rules.attempts}</div>
+            <div>Failed: ${matchingStats.failed.count}</div>
+        `;
+    }
+    
+    updateDebugDisplay();
+    
+    // Button handlers
+    document.getElementById('clear-debug').onclick = () => {
+        Object.keys(matchingStats).forEach(key => {
+            if (matchingStats[key].attempts !== undefined) {
+                matchingStats[key].attempts = 0;
+                matchingStats[key].successes = 0;
+            } else {
+                matchingStats[key].count = 0;
+            }
+        });
+        updateDebugDisplay();
+    };
+    
+    document.getElementById('close-debug').onclick = () => {
+        panel.remove();
+    };
+    
+    return updateDebugDisplay;
+}
+
+// ============================================
+// ENHANCED FILL FUNCTION WITH REPORTING
+// ============================================
+
+async function fillNowWithDebug() {
+    // Reset stats for this fill operation
+    if (DEBUG_MODE) {
+        console.group('🔍 [AutoFill] Starting Fill Operation');
+    }
+    
+    // Run normal fill
+    await fillNow();
+    
+    // Report statistics
+    if (DEBUG_MODE) {
+        reportMatchingStatistics();
+        console.groupEnd();
+    }
+}
+
+// ============================================
+// ADD DEBUG COMMANDS
+// ============================================
+
+// Make functions available in console for testing
+window.autofillDebug = {
+    stats: () => reportMatchingStatistics(),
+    showPanel: () => createDebugOverlay(),
+    setDebugMode: (enabled) => { 
+        window.DEBUG_MODE = enabled;
+        console.log(`Debug mode ${enabled ? 'enabled' : 'disabled'}`);
+    },
+    testDynamic: async () => {
+        // Force dynamic matcher only
+        const tempThreshold = dynamicMatcher.similarityThreshold;
+        dynamicMatcher.similarityThreshold = 0; // Accept any match
+        await fillNowWithDebug();
+        dynamicMatcher.similarityThreshold = tempThreshold;
+    },
+    testRules: async () => {
+        // Force rules only by temporarily disabling dynamic
+        const temp = dynamicMatcher.matchFieldToProfile;
+        dynamicMatcher.matchFieldToProfile = () => ({ key: null, confidence: 0 });
+        await fillNowWithDebug();
+        dynamicMatcher.matchFieldToProfile = temp;
+    }
+};
+
+console.log('💡 [AutoFill] Debug mode enabled. Use window.autofillDebug.stats() to see statistics.');
 
 // ============================================
 // VALUE SETTERS (UNCHANGED)
