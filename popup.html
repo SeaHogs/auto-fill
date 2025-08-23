@@ -2,34 +2,252 @@
 <html>
 <head>
     <meta charset="utf-8" />
+    <title>AutoFill Scout</title>
     <style>
-        body { font-family: system-ui, sans-serif; margin: 12px; width: 260px; }
-        button { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #ccc; margin-top: 6px; }
-        .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-        input[type="checkbox"] { transform: scale(1.2); }
-        input[type="password"] { width: 100%; padding: 6px; border-radius: 8px; border: 1px solid #ccc; }
-        small { color:#666 }
+        body { 
+            font-family: system-ui, sans-serif; 
+            margin: 12px; 
+            width: 280px;
+            min-height: 200px;
+        }
+        
+        /* Sections */
+        .section {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .section:last-child {
+            border-bottom: none;
+        }
+        
+        /* Login Section */
+        .login-section {
+            background: #f5f5f5;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        
+        .user-info {
+            background: #e8f5e9;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        
+        .user-info strong {
+            color: #2e7d32;
+        }
+        
+        /* Buttons */
+        button { 
+            width: 100%; 
+            padding: 8px; 
+            border-radius: 6px; 
+            border: 1px solid #ccc; 
+            margin-top: 6px;
+            cursor: pointer;
+            background: white;
+            font-size: 14px;
+        }
+        
+        button:hover {
+            background: #f0f0f0;
+        }
+        
+        button.primary {
+            background: #1976d2;
+            color: white;
+            border: 1px solid #1565c0;
+        }
+        
+        button.primary:hover {
+            background: #1565c0;
+        }
+        
+        button.success {
+            background: #4caf50;
+            color: white;
+            border: 1px solid #388e3c;
+        }
+        
+        button.success:hover {
+            background: #388e3c;
+        }
+        
+        /* Input fields */
+        input[type="text"], 
+        input[type="password"] {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            box-sizing: border-box;
+        }
+        
+        input[type="checkbox"] { 
+            transform: scale(1.2);
+            margin-right: 8px;
+        }
+        
+        /* Status messages */
+        .status {
+            padding: 8px;
+            margin: 10px 0;
+            border-radius: 6px;
+            font-size: 13px;
+            display: none;
+        }
+        
+        .status.success {
+            background: #c8e6c9;
+            color: #1b5e20;
+            border: 1px solid #81c784;
+        }
+        
+        .status.error {
+            background: #ffcdd2;
+            color: #b71c1c;
+            border: 1px solid #ef5350;
+        }
+        
+        .status.info {
+            background: #e1f5fe;
+            color: #01579b;
+            border: 1px solid #4fc3f7;
+        }
+        
+        /* Labels */
+        label {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            font-size: 14px;
+        }
+        
+        h4 {
+            margin: 10px 0 8px;
+            font-size: 14px;
+            color: #424242;
+        }
+        
+        small {
+            color: #666;
+            font-size: 11px;
+        }
+        
+        /* Hide/show based on login state */
+        .logged-out { display: block; }
+        .logged-in { display: none; }
+        
+        body.is-logged-in .logged-out { display: none; }
+        body.is-logged-in .logged-in { display: block; }
+        
+        /* Mock user selector */
+        .mock-users {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #e0e0e0;
+        }
+        
+        .mock-user-btn {
+            background: #fff3e0;
+            border: 1px solid #ffb74d;
+            font-size: 12px;
+            padding: 6px;
+            margin: 3px 0;
+        }
+        
+        .mock-user-btn:hover {
+            background: #ffe0b2;
+        }
+        
+        /* Links */
+        a {
+            color: #1976d2;
+            text-decoration: none;
+            font-size: 12px;
+        }
+        
+        a:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
-<div class="row">
-    <label>Auto-fill on page load</label>
-    <input id="autofillToggle" type="checkbox" />
-</div>
-
-<button id="fill">Fill this page</button>
-<button id="listFields">List fields</button>
-
-<h4 style="margin:10px 0 4px">Unlock (for encrypted profiles)</h4>
-<input id="pass" type="password" placeholder="Passphrase" />
-<button id="unlock">Unlock for session</button>
-<button id="lock">Lock</button>
-<small id="status"></small>
-
-<p style="margin-top:10px;font-size:12px;">
-    Profile in <a href="#" id="openOptions">Options</a>.
-</p>
-<script src="popup.js"></script>
+    <!-- Login Section (shown when logged out) -->
+    <div class="logged-out">
+        <div class="login-section">
+            <h4>🔐 Login to AutoFill</h4>
+            <input type="text" id="username" placeholder="Username or User ID" />
+            <input type="password" id="password" placeholder="Password (optional for mock)" />
+            <button id="loginBtn" class="primary">Login</button>
+            
+            <!-- Mock users for testing -->
+            <div class="mock-users">
+                <small>Quick test with mock users:</small>
+                <button class="mock-user-btn" data-user="mock-user-123">
+                    👤 John Doe (mock-user-123)
+                </button>
+                <button class="mock-user-btn" data-user="mock-user-456">
+                    👤 Jane Smith (mock-user-456)
+                </button>
+            </div>
+        </div>
+        
+        <div class="section">
+            <small>💡 Login to fetch your profile from the company database</small>
+        </div>
+    </div>
+    
+    <!-- Logged In Section (shown when logged in) -->
+    <div class="logged-in">
+        <div class="user-info">
+            <strong>✓ Logged in as:</strong><br>
+            <span id="currentUser">Loading...</span><br>
+            <small id="userDetails"></small>
+        </div>
+        
+        <div class="section">
+            <label>
+                <input id="autofillToggle" type="checkbox" />
+                Auto-fill on page load
+            </label>
+            
+            <button id="fillBtn" class="success">
+                ✨ Fill This Page
+            </button>
+            
+            <button id="syncBtn">
+                🔄 Sync with Company Database
+            </button>
+            
+            <button id="listFieldsBtn">
+                📋 List Fields (Debug)
+            </button>
+        </div>
+        
+        <div class="section">
+            <button id="logoutBtn">
+                Logout
+            </button>
+        </div>
+    </div>
+    
+    <!-- Status messages -->
+    <div id="statusMessage" class="status"></div>
+    
+    <!-- Footer -->
+    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #e0e0e0;">
+        <p style="margin: 5px 0; font-size: 12px; text-align: center;">
+            Profile settings in <a href="#" id="openOptions">Options</a>
+        </p>
+    </div>
+    
+    <script src="popup_login.js"></script>
 </body>
 </html>
-

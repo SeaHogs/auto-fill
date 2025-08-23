@@ -48,6 +48,24 @@
 </div>
 <p id="encStatus" style="font-size:12px;color:#666;margin-top:6px;"></p>
 
+const syncControlsHTML = `
+<h2>AWS Sync Settings</h2>
+<div class="sync-controls">
+    <div class="sync-status" id="syncStatus">
+        <span id="syncStatusText">Not synced</span>
+        <span id="lastSyncTime"></span>
+    </div>
+    <div class="sync-actions">
+        <button id="fetchFromAWS">↓ Fetch from Company Database</button>
+        <button id="pushToAWS">↑ Push to Company Database</button>
+        <label>
+            <input type="checkbox" id="autoSync" checked>
+            Auto-sync with company database
+        </label>
+    </div>
+    <div id="syncMessage" style="display:none; padding:10px; margin:10px 0;"></div>
+</div>
+
 <div class="row">
     <button id="save">Save</button>
     <button id="reset" title="Clear all stored data">Clear</button>

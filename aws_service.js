@@ -519,6 +519,106 @@ class StorageService {
     }
 }
 
+class EnhancedStorageService extends StorageService {
+    async mockLoadProfile(userId) {
+        console.log(`[AutoFill] Mock AWS: Fetching profile for ${userId}`);
+        
+        // Simulate network delay
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Mock company database
+        const companyDatabase = {
+            'mock-user-123': {
+                // Basic Information
+                firstName: 'John',
+                lastName: 'Doe',
+                fullName: 'John Doe',
+                email: 'john.doe@company.com',
+                phone: '+1-555-0123',
+                birthday: '1990-01-15',
+                
+                // Address
+                address1: '123 Tech Street',
+                city: 'San Francisco',
+                postalCode: '94105',
+                country: 'United States',
+                
+                // Education
+                university: 'Stanford University',
+                degree: 'Bachelor of Science',
+                major: 'Computer Science',
+                gpa: '3.8',
+                gradYear: '2012',
+                
+                // Professional
+                linkedin: 'https://linkedin.com/in/johndoe',
+                github: 'https://github.com/johndoe',
+                website: 'https://johndoe.dev',
+                summary: 'Senior Software Engineer with expertise in cloud architecture and machine learning.',
+                
+                // Company-specific fields (optional)
+                employeeId: 'EMP-12345',
+                department: 'Engineering',
+                title: 'Senior Software Engineer'
+            },
+            'default': {
+                firstName: 'Demo',
+                lastName: 'User',
+                fullName: 'Demo User',
+                email: 'demo@example.com',
+                phone: '+1-555-0000',
+                birthday: '1995-06-15',
+                address1: '456 Demo Lane',
+                city: 'New York',
+                postalCode: '10001',
+                country: 'United States',
+                university: 'MIT',
+                degree: 'Master of Science',
+                major: 'Artificial Intelligence',
+                gpa: '3.9',
+                gradYear: '2017',
+                linkedin: 'https://linkedin.com/in/demouser',
+                github: 'https://github.com/demouser',
+                website: 'https://demo.example.com',
+                summary: 'AI researcher and software developer.'
+            }
+        };
+        
+        // Return user data or default
+        const userData = companyDatabase[userId] || companyDatabase['default'];
+        
+        return {
+            data: userData,
+            metadata: {
+                source: 'mock-aws',
+                userId: userId,
+                lastModified: new Date().toISOString(),
+                department: userData.department || 'General'
+            }
+        };
+    }
+    
+    async mockSaveProfile(profileData) {
+        console.log('[AutoFill] Mock AWS: Saving profile to cloud');
+        
+        // Simulate network delay
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // In reality, this would save to AWS
+        // For mock, we just save locally with a flag
+        await chrome.storage.local.set({
+            af_profile_cloud_backup: profileData,
+            af_profile_cloud_timestamp: Date.now()
+        });
+        
+        return {
+            success: true,
+            timestamp: new Date().toISOString(),
+            message: 'Profile saved to mock cloud storage'
+        };
+    }
+}
+
 // ============================================
 // EXPORT FOR USE IN CONTENT.JS
 // ============================================

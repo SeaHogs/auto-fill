@@ -734,17 +734,71 @@ function decorate(el, ok) {
 }
 
 // ============================================
-// PROFILE LOADER (UNCHANGED)
+// PROFILE LOADER (CHANGED)
 // ============================================
+async function getUserIdentifier() {
+    const storage = await chrome.storage.local.get(['currentUserId']);
+    return storage.currentUserId || 'default-user';
+}
+
 async function loadProfile() {
-    const local = await chrome.storage.local.get(["af_profile", "af_profile_enc"]);
-    if (local.af_profile_enc) {
-        let pass = "";
-        try { const s = await chrome.storage.session.get("af_passphrase"); pass = s.af_passphrase || ""; } catch {}
-        if (!pass) { console.warn("[AutoFill] Encrypted profile present but locked. Use popup to Unlock."); return null; }
-        try { return await AF_CRYPTO.decryptJSON(local.af_profile_enc, pass); }
-        catch (e) { console.warn("[AutoFill] Decryption failed:", e?.message); return null; }
+    console.log('[AutoFill] Loading profile...');
+    
+    // Check if we should sync with AWS
+    const settings = await chrome.storage.local.get(['syncWithAWS', 'lastSyncTime']);
+    const shouldSync = settings.syncWithAWS !== false; // Default to true
+    const lastSync = settings.lastSyncTime || 0;
+    const hoursSinceSync = (Date.now() - lastSync) / (1000 * 60 * 60);
+    
+    // Try to load from AWS if enabled and it's been > 1 hour
+    if (shouldSync && hoursSinceSync > 1 && typeof StorageService !== 'undefined') {
+        try {
+            console.log('[AutoFill] Fetching latest profile from AWS...');
+            const storageService = new StorageService(SERVICE_CONFIG);
+            const userId = await getUserIdentifier();
+            const remoteProfile = await storageService.loadProfile(userId);
+            
+            if (remoteProfile && remoteProfile.data) {
+                console.log('[AutoFill] Successfully fetched profile from AWS');
+                
+                // Save AWS data locally (user can edit this)
+                await chrome.storage.local.set({ 
+                    af_profile: remoteProfile.data,
+                    lastSyncTime: Date.now(),
+                    lastSyncSource: 'aws'
+                });
+                
+                return remoteProfile.data;
+            }
+        } catch (error) {
+            console.warn('[AutoFill] Could not fetch from AWS:', error);
+        }
     }
+    
+    // Load from local storage (either AWS-synced or user-edited)
+    const local = await chrome.storage.local.get(["af_profile", "af_profile_enc"]);
+    
+    if (local.af_profile_enc) {
+        // Handle encrypted profile
+        let pass = "";
+        try { 
+            const s = await chrome.storage.session.get("af_passphrase"); 
+            pass = s.af_passphrase || ""; 
+        } catch {}
+        
+        if (!pass) { 
+            console.warn("[AutoFill] Encrypted profile present but locked"); 
+            return null; 
+        }
+        
+        try { 
+            return await AF_CRYPTO.decryptJSON(local.af_profile_enc, pass); 
+        } catch (e) { 
+            console.warn("[AutoFill] Decryption failed:", e?.message); 
+            return null; 
+        }
+    }
+    
     return local.af_profile || null;
 }
 
