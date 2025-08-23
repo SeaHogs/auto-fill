@@ -15,7 +15,7 @@
       "matches": ["<all_urls>"],
       "js": [
         "crypto.js",
-        "aws-service.js",
+        "aws_service.js",
         "content.js"
       ],
       "run_at": "document_idle",

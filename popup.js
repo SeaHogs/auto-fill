@@ -9,19 +9,57 @@ async function ensureInjected(tabId) {
             target: { tabId },
             func: () => Boolean(window.__AF_CONTENT_READY__)
         });
-        if (result) return;
-    } catch (_) {}
-    await chrome.scripting.executeScript({ target: { tabId }, files: ["crypto.js", "content.js"] });
+        if (result) return; // Already injected
+    } catch (error) {
+        console.log("Could not check injection status:", error);
+    }
+    
+    // Try to inject the scripts
+    try {
+        await chrome.scripting.executeScript({ 
+            target: { tabId }, 
+            files: ["crypto.js", "content.js"] 
+        });
+        console.log("Scripts injected successfully");
+    } catch (error) {
+        console.error("Failed to inject scripts:", error);
+        throw error;
+    }
 }
 
 async function sendToTab(type) {
     const tab = await getActiveTab();
-    if (!tab?.id) return;
+    if (!tab?.id) {
+        console.log("No active tab found");
+        return;
+    }
+    
+    // Check if it's a restricted URL
+    if (tab.url && (
+        tab.url.startsWith('chrome://') || 
+        tab.url.startsWith('chrome-extension://') ||
+        tab.url.startsWith('edge://') ||
+        tab.url.startsWith('about:') ||
+        tab.url === 'chrome://newtab/'
+    )) {
+        console.log("Cannot run on system pages");
+        alert("AutoFill cannot run on browser system pages.\nPlease navigate to a regular website!");
+        return;
+    }
+    
     try {
         await chrome.tabs.sendMessage(tab.id, { type });
-    } catch {
-        await ensureInjected(tab.id);
-        await chrome.tabs.sendMessage(tab.id, { type });
+    } catch (error) {
+        console.log("First attempt failed, trying to inject script...");
+        try {
+            await ensureInjected(tab.id);
+            // Small delay to let script initialize
+            await new Promise(resolve => setTimeout(resolve, 100));
+            await chrome.tabs.sendMessage(tab.id, { type });
+        } catch (retryError) {
+            console.error("Failed after retry:", retryError);
+            alert("Could not connect to this page.\nTry refreshing the page or navigate to a different website.");
+        }
     }
 }
 
