@@ -327,36 +327,37 @@ class FieldMatchingService {
     // ============================================
     async realMatchField(fieldContext) {
         try {
-            const response = await fetch(`${this.apiEndpoint}/classify`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-API-Key': this.apiKey
-                },
-                body: JSON.stringify({
-                    text: fieldContext.combinedText,
-                    features: {
-                        label: fieldContext.label,
-                        placeholder: fieldContext.placeholder,
-                        type: fieldContext.type,
-                        name: fieldContext.name,
-                        id: fieldContext.id
-                    },
-                    service: 'comprehend'
-                })
-            });
+            // const response = await fetch(`${this.apiEndpoint}/classify`, {
+            //     method: 'POST',
+            //     headers: {
+            //         'Content-Type': 'application/json',
+            //         'X-API-Key': this.apiKey
+            //     },
+            //     body: JSON.stringify({
+            //         text: fieldContext.combinedText,
+            //         features: {
+            //             label: fieldContext.label,
+            //             placeholder: fieldContext.placeholder,
+            //             type: fieldContext.type,
+            //             name: fieldContext.name,
+            //             id: fieldContext.id
+            //         },
+            //         service: 'comprehend'
+            //     })
+            // });
 
-            if (!response.ok) {
-                throw new Error(`AWS API error: ${response.status}`);
-            }
+            // if (!response.ok) {
+            //     throw new Error(`AWS API error: ${response.status}`);
+            // }
 
-            const data = await response.json();
-            return {
-                fieldType: data.fieldType || data.predictions[0].label,
-                confidence: data.confidence || data.predictions[0].score,
-                alternatives: data.alternatives || data.predictions.slice(1),
-                metadata: { ...data.metadata, method: 'aws' }
-            };
+            // const data = await response.json();
+            // return {
+            //     fieldType: data.fieldType || data.predictions[0].label,
+            //     confidence: data.confidence || data.predictions[0].score,
+            //     alternatives: data.alternatives || data.predictions.slice(1),
+            //     metadata: { ...data.metadata, method: 'aws' }
+            // };
+            dynamicMatcher = new DynamicFieldMatcher()
             
         } catch (error) {
             console.error('[AutoFill] AWS API Error:', error);
