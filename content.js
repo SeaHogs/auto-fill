@@ -189,11 +189,22 @@ class DynamicFieldMatcher {
 // Initialize the dynamic matcher
 const dynamicMatcher = new DynamicFieldMatcher();
 
-// Initialize AWS service (mock by default) - ONLY if aws-service.js is loaded
+// Initialize AWS service with local LLM if available
 let awsService = null;
 if (typeof FieldMatchingService !== 'undefined') {
-    awsService = new FieldMatchingService({ useMockService: true });
-    console.log("[AutoFill] AWS service initialized (mock mode)");
+    awsService = new FieldMatchingService({
+        useMockService: false,
+        localModel: {
+            enabled: true,
+            endpoint: 'http://localhost:11434/api/generate',
+            model: 'llama3:1b'
+        }
+    });
+    // Ensure global config reflects local model usage so guessFieldKey invokes the service
+    if (typeof SERVICE_CONFIG !== 'undefined') {
+        SERVICE_CONFIG.useMockService = false;
+        SERVICE_CONFIG.localModel = awsService.localModel;
+    }
 }
 
 // ============================================
