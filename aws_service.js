@@ -20,7 +20,7 @@ const SERVICE_CONFIG = {
         personalizeEndpoint: null // Company adds
     },
 
-    // Local LLM configuration for testing
+    // Local LLM config
     localModel: {
         enabled: false,
         endpoint: 'http://localhost:11434/api/generate',
