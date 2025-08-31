@@ -18,6 +18,7 @@ curl -X POST http://localhost:11434/api/generate \
 from __future__ import annotations
 
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 
@@ -29,6 +30,9 @@ model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
 model.eval()
 
 app = Flask(__name__)
+# Replace "*" with specific domains like "https://apply.etc.cmu.edu" or
+# "chrome-extension://<extension-id>" to restrict access.
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 @app.post("/api/generate")
 def generate():
