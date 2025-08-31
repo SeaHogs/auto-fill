@@ -6,18 +6,25 @@
 const SERVICE_CONFIG = {
     // CHANGE THIS TO false WHEN COMPANY HAS AWS ACCESS
     useMockService: true,  // ← Company changes this to false
-    
+
     // Company adds their real endpoints
     apiEndpoint: 'https://api.company.com/autofill',
     apiKey: 'mock-key',  // ← Fixed: removed process.env
     bucketName: 'company-autofill-profiles',
-    
+
     // AWS Configuration (company fills in)
     aws: {
         region: 'us-east-1',
         comprehendEndpoint: null, // Company adds
         sagemakerEndpoint: null,  // Company adds
         personalizeEndpoint: null // Company adds
+    },
+
+    // Local LLM configuration for testing
+    localModel: {
+        enabled: false,
+        endpoint: 'http://localhost:11434/api/generate',
+        model: 'llama3:1b'
     }
 };
 // ============================================
@@ -30,19 +37,59 @@ class FieldMatchingService {
         this.useMockService = this.config.useMockService;
         this.apiEndpoint = this.config.apiEndpoint;
         this.apiKey = this.config.apiKey;
+        this.localModel = this.config.localModel || {};
         
         // Confidence threshold for accepting matches
         this.confidenceThreshold = 0.7;
         
-        console.log(`[AutoFill] AWS Service initialized in ${this.useMockService ? 'MOCK' : 'PRODUCTION'} mode`);
+        console.log(`[AutoFill] AWS Service initialized in ${this.localModel.enabled ? 'LOCAL-LLM' : (this.useMockService ? 'MOCK' : 'PRODUCTION')} mode`);
     }
 
     // Main method that your extension calls
     async matchField(fieldContext) {
-        if (this.useMockService) {
+        if (this.localModel.enabled) {
+            return this.localMatchField(fieldContext);
+        } else if (this.useMockService) {
             return this.mockMatchField(fieldContext);
         } else {
             return this.realMatchField(fieldContext);
+        }
+    }
+
+    // Use local LLaMA model for classification
+    async localMatchField(fieldContext) {
+        const prompt = `You are a form field classifier. Return JSON {\"fieldType\":string, \"confidence\":number} for: ${JSON.stringify(fieldContext)}`;
+        try {
+            const response = await fetch(this.localModel.endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: this.localModel.model,
+                    prompt,
+                    stream: false
+                })
+            });
+            const data = await response.json();
+            const parsed = JSON.parse((data.response || '').trim());
+            return {
+                fieldType: parsed.fieldType || null,
+                confidence: parsed.confidence || 0,
+                metadata: {
+                    modelVersion: this.localModel.model,
+                    method: 'local-llama'
+                }
+            };
+        } catch (e) {
+            console.warn('[AutoFill] Local LLaMA classification failed', e);
+            return {
+                fieldType: null,
+                confidence: 0,
+                metadata: {
+                    modelVersion: this.localModel.model,
+                    method: 'local-llama',
+                    error: String(e)
+                }
+            };
         }
     }
 
