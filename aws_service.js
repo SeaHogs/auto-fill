@@ -58,7 +58,8 @@ class FieldMatchingService {
 
     // Use local LLaMA model for classification
     async localMatchField(fieldContext) {
-        const prompt = `You are a form field classifier. Return JSON {\"fieldType\":string, \"confidence\":number} for: ${JSON.stringify(fieldContext)}`;
+        // Instruct the model to return pure JSON only
+        const prompt = `You are a form field classifier. Return ONLY JSON {\"fieldType\":string, \"confidence\":number} for: ${JSON.stringify(fieldContext)}`;
         try {
             const response = await fetch(this.localModel.endpoint, {
                 method: 'POST',
@@ -70,26 +71,27 @@ class FieldMatchingService {
                 })
             });
             const data = await response.json();
-            const parsed = JSON.parse((data.response || '').trim());
-            return {
-                fieldType: parsed.fieldType || null,
-                confidence: parsed.confidence || 0,
-                metadata: {
-                    modelVersion: this.localModel.model,
-                    method: 'local-llama'
-                }
-            };
+
+            const raw = (data.response || '').trim();
+            try {
+                const match = raw.match(/\{[\s\S]*\}/);
+                if (!match) throw new Error('No JSON object found');
+                const parsed = JSON.parse(match[0]);
+                return {
+                    fieldType: parsed.fieldType || null,
+                    confidence: parsed.confidence || 0,
+                    metadata: {
+                        modelVersion: this.localModel.model,
+                        method: 'local-llama'
+                    }
+                };
+            } catch (parseError) {
+                console.warn('[AutoFill] Failed to parse local LLaMA response:', raw, parseError);
+                return { fieldType: null, confidence: 0 };
+            }
         } catch (e) {
             console.warn('[AutoFill] Local LLaMA classification failed', e);
-            return {
-                fieldType: null,
-                confidence: 0,
-                metadata: {
-                    modelVersion: this.localModel.model,
-                    method: 'local-llama',
-                    error: String(e)
-                }
-            };
+            return { fieldType: null, confidence: 0 };
         }
     }
 
